@@ -33,21 +33,24 @@ class ModelManager:
                     "sentiment_score", "neutral_score", "negative_score", "positive_score",
                     "title_gunning_fog", "title_flesch_reading_ease", "title_compound_sentiment_score", 
                     "title_sentiment_score"
-                ]
+                ],
+                "accuracy": 0.73
             },
             "2": {
                 "id": 2,
                 "name": "Random Forest",
                 "description": "Random Forest model using TF-IDF features",
                 "file_path": os.path.join(self.models_dir, "random_forest.pkl"),
-                "type": "text"
+                "type": "text",
+                "accuracy": 0.99
             },
             "3": {
                 "id": 3,
                 "name": "Naive Bayes",
                 "description": "Naive Bayes model using TF-IDF features",
                 "file_path": os.path.join(self.models_dir, "naive_bayes.pkl"),
-                "type": "text"
+                "type": "text",
+                "accuracy": 0.92
             }
         }
         
