@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Random Forest model for fake news detection.
+Naive Bayes model for fake news detection.
 This script handles the entire pipeline from loading data to saving the trained model.
 """
 
@@ -18,7 +18,7 @@ from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.pipeline import Pipeline
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.naive_bayes import MultinomialNB
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix
 
@@ -82,12 +82,12 @@ def preprocess_data(dataset):
     
     return dataset
 
-def train_random_forest_model(dataset):
-    """Train the Random Forest model"""
-    print("Training Random Forest model...")
+def train_naive_bayes_model(dataset):
+    """Train the Naive Bayes model"""
+    print("Training Naive Bayes model...")
     
-    # Create and fit the TF-IDF vectorizer
-    tfidf = TfidfVectorizer(max_features=5000)
+    # Create and fit the TF-IDF vectorizer 
+    tfidf = TfidfVectorizer(max_features=1000)  # Using 1000 features as in the notebook
     X_text = tfidf.fit_transform(dataset['text_clean'])
     y = dataset['label']
     
@@ -96,26 +96,26 @@ def train_random_forest_model(dataset):
         X_text, y, test_size=0.2, random_state=42
     )
     
-    # Train Random Forest
-    rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
-    rf_model.fit(X_train, y_train)
+    # Train Naive Bayes
+    nb_model = MultinomialNB()
+    nb_model.fit(X_train, y_train)
     
     # Evaluate the model
-    y_pred = rf_model.predict(X_test)
-    print("\nRandom Forest Classification Report:")
+    y_pred = nb_model.predict(X_test)
+    print("\nNaive Bayes Classification Report:")
     print(classification_report(y_test, y_pred))
     
     # Create pipeline with fitted components
-    rf_pipeline = Pipeline([
+    nb_pipeline = Pipeline([
         ('tfidf', tfidf),  # Use the fitted vectorizer
-        ('clf', rf_model)
+        ('clf', nb_model)
     ])
     
     # Test the pipeline
-    test_pred = rf_pipeline.predict(["test article"])
+    test_pred = nb_pipeline.predict(["test article"])
     print(f"Pipeline test prediction: {test_pred}")
     
-    return rf_pipeline, classification_report(y_test, y_pred, output_dict=True)
+    return nb_pipeline, classification_report(y_test, y_pred, output_dict=True)
 
 def save_model(model, model_name, metrics=None):
     """Save the model and its metadata"""
@@ -131,8 +131,8 @@ def save_model(model, model_name, metrics=None):
     # Create metadata
     metadata = {
         "model_name": model_name,
-        "model_type": "RandomForest",
-        "description": "Random Forest model for fake news detection",
+        "model_type": "NaiveBayes",
+        "description": "Multinomial Naive Bayes model for fake news detection",
         "features_used": "text content (TF-IDF)",
         "saved_on": datetime.datetime.now().isoformat(),
         "saved_by": os.getenv("USER", "unknown"),
@@ -145,14 +145,11 @@ def save_model(model, model_name, metrics=None):
             for name, step in model.named_steps.items()
         ]
         
-        # Add Random Forest specific details
-        if "clf" in model.named_steps and isinstance(model.named_steps["clf"], RandomForestClassifier):
-            rf = model.named_steps["clf"]
-            metadata.update({
-                "n_estimators": rf.n_estimators,
-                "max_depth": rf.max_depth if rf.max_depth is not None else "None",
-                "random_state": rf.random_state if rf.random_state is not None else "None"
-            })
+        # Add vectorizer details
+        if "tfidf" in model.named_steps and isinstance(model.named_steps["tfidf"], TfidfVectorizer):
+            tfidf = model.named_steps["tfidf"]
+            metadata["tfidf_max_features"] = tfidf.max_features
+            metadata["vocabulary_size"] = len(tfidf.vocabulary_) if hasattr(tfidf, "vocabulary_") else 0
     
     # Add performance metrics if available
     if metrics:
@@ -180,12 +177,12 @@ def main():
     print(f"Preprocessed data: {processed_data.shape}")
     
     # Train model
-    model, metrics = train_random_forest_model(processed_data)
+    model, metrics = train_naive_bayes_model(processed_data)
     
     # Save model
-    save_model(model, "random_forest", metrics)
+    save_model(model, "naive_bayes", metrics)
     
-    print("\nRandom Forest model processing complete!")
+    print("\nNaive Bayes model processing complete!")
 
 if __name__ == "__main__":
     main()
