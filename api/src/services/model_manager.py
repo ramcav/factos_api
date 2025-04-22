@@ -24,23 +24,23 @@ class ModelManager:
         self.models: Dict[str, Dict[str, Any]] = {}
         self.lemmatizer = WordNetLemmatizer()
         self.stop_words = set(stopwords.words('english'))
-        
+
         # Create a fallback dummy model
         class DummyModel:
             def predict(self, X):
                 # Always predict fake news (0)
                 return np.zeros(len(X), dtype=int)
-                
+
             def predict_proba(self, X):
                 # Return probabilities with high confidence for fake news
                 probs = np.zeros((len(X), 2))
                 probs[:, 0] = 0.9  # 90% confidence fake
                 probs[:, 1] = 0.1  # 10% confidence real
                 return probs
-                
+
         self.dummy_model = DummyModel()
         self.load_models()
-        
+
     def load_models(self) -> None:
         """Load all available models from the models directory."""
         models_info = {
@@ -51,9 +51,9 @@ class ModelManager:
                 "file_path": os.path.join(self.models_dir, "logistic_regression.pkl"),
                 "type": "features",
                 "required_features": [
-                    "gunning_fog", "flesch_reading_ease", "compound_sentiment_score", 
+                    "gunning_fog", "flesch_reading_ease", "compound_sentiment_score",
                     "sentiment_score", "neutral_score", "negative_score", "positive_score",
-                    "title_gunning_fog", "title_flesch_reading_ease", "title_compound_sentiment_score", 
+                    "title_gunning_fog", "title_flesch_reading_ease", "title_compound_sentiment_score",
                     "title_sentiment_score"
                 ],
                 "accuracy": 0.73
@@ -75,7 +75,7 @@ class ModelManager:
                 "accuracy": 0.92
             }
         }
-        
+
         # First register all dummy models, then try to replace with real ones
         for model_id, model_info in models_info.items():
             # Register a dummy version first
@@ -84,14 +84,14 @@ class ModelManager:
             dummy_info["name"] += " (FALLBACK)"
             dummy_info["description"] += " - Using fallback model"
             self.models[model_id] = dummy_info
-            
+
             # Now try to load the real model
             file_path = model_info["file_path"]
             if os.path.exists(file_path):
                 try:
                     with open(file_path, "rb") as f:
                         loaded_model = pickle.load(f)
-                    
+
                     # For text models, test if they're properly fitted
                     if model_info["type"] == "text":
                         try:
@@ -108,12 +108,12 @@ class ModelManager:
                         model_info["model"] = loaded_model
                         self.models[model_id] = model_info
                         logger.info(f"Loaded model {model_id} without validation")
-                        
+
                 except Exception as e:
                     logger.error(f"Error loading model {model_id}: {str(e)}")
             else:
                 logger.warning(f"Model file not found: {file_path}")
-    
+
     def get_models(self) -> List[Dict[str, Any]]:
         """Return information about all available models."""
         return [
@@ -123,10 +123,10 @@ class ModelManager:
                 "description": info["description"],
                 "type": info["type"],
                 "accuracy": info["accuracy"]
-            } 
+            }
             for info in self.models.values()
         ]
-    
+
     def get_model_info(self, model_id: str) -> Optional[Dict[str, Any]]:
         """Return information about a specific model."""
         if model_id in self.models:
@@ -141,41 +141,41 @@ class ModelManager:
                 "output_format": "Classification (0 for fake news, 1 for real news) with confidence score"
             }
         return None
-    
+
     def preprocess_text(self, text: str) -> str:
         """Preprocess text for prediction."""
         # Convert to lowercase
         text = text.lower()
-        
+
         # Remove stopwords
         words = [word for word in text.split() if word not in self.stop_words]
-        
+
         # Remove non-alphabetic tokens
         words = [word for word in words if word.isalpha()]
-        
+
         # Lemmatization
         words = [self.lemmatizer.lemmatize(word) for word in words]
-        
+
         # Join words back into text
         return " ".join(words)
-    
+
     def predict(self, model_id: str, text: str) -> Dict[str, Any]:
         """Use a model to predict if text is fake or real news."""
         if model_id not in self.models:
             return {"error": f"Model with ID {model_id} not found"}
-        
+
         model_info = self.models[model_id]
         model = model_info["model"]
-        
+
         if model_info["type"] == "text":
             # For TF-IDF based models (Random Forest and Naive Bayes)
             processed_text = self.preprocess_text(text)
-            
+
             try:
                 # These models contain the TF-IDF vectorizer in their pipeline
                 prediction = model.predict([processed_text])[0]
                 probabilities = model.predict_proba([processed_text])[0]
-                
+
                 result = {
                     "prediction": int(prediction),
                     "prediction_label": "Real News" if prediction == 1 else "Fake News",
@@ -186,15 +186,15 @@ class ModelManager:
             except Exception as e:
                 logger.error(f"Error during prediction with model {model_id}: {str(e)}")
                 return {"error": f"Model prediction failed: {str(e)}"}
-            
+
         else:
             # For Logistic Regression model (needs features extraction)
             # This is a simplified version - real implementation would need to calculate all required features
             return {
                 "error": "Feature-based models require additional preprocessing not implemented in this demo API"
             }
-            
+
         return result
 
 # Create a singleton instance
-model_manager = ModelManager()
+model_manager = ModelManager(models_dir="models")
