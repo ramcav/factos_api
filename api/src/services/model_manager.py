@@ -22,6 +22,16 @@ nltk.download('stopwords', quiet=True)
 nltk.download('punkt', quiet=True)
 nltk.download('wordnet', quiet=True)
 
+# Flag to indicate if transformers is available
+try:
+    import torch
+    from transformers import AutoModelForSequenceClassification, AutoTokenizer
+    transformers_available = True
+    logger.info("Transformers library loaded successfully")
+except ImportError:
+    transformers_available = False
+    logger.warning("Transformers library not available. BERT model will not be loaded.")
+
 class ModelManager:
     def __init__(self, models_dir: str = None):
         # Use a more robust way to find the models directory
@@ -58,6 +68,10 @@ class ModelManager:
         # Load tokenizer for CNN model
         self.tokenizer = None
         self.max_length = 100  # Default max sequence length
+        
+        # BERT tokenizer and model
+        self.bert_tokenizer = None
+        self.bert_model = None
         
         # Try to load tokenizer if it exists
         tokenizer_path = os.path.join(self.models_dir, "tokenizer.pickle")
@@ -121,6 +135,14 @@ class ModelManager:
                 "file_path": os.path.join(self.models_dir, "cnn.keras"),
                 "type": "deep_learning",
                 "accuracy": 0.999
+            },
+            "5": {
+                "id": 5,
+                "name": "DistilBERT",
+                "description": "Transformer-based language model fine-tuned for fake news detection",
+                "file_path": os.path.join(self.models_dir, "bert"),
+                "type": "transformer",
+                "accuracy": 0.998
             }
         }
         
@@ -137,8 +159,43 @@ class ModelManager:
             file_path = model_info["file_path"]
             if os.path.exists(file_path):
                 try:
+                    # Special handling for transformer models (BERT)
+                    if model_info["type"] == "transformer":
+                        if not transformers_available:
+                            logger.warning(f"Transformers library not available. Using fallback model for {model_id}.")
+                            continue
+                            
+                        try:
+                            # Load BERT model
+                            self.bert_model = AutoModelForSequenceClassification.from_pretrained(file_path)
+                            
+                            # Load BERT tokenizer from pickle file instead of AutoTokenizer
+                            bert_tokenizer_path = os.path.join(file_path, "bert-tokenizer.pickle")
+                            if os.path.exists(bert_tokenizer_path):
+                                try:
+                                    with open(bert_tokenizer_path, "rb") as f:
+                                        self.bert_tokenizer = pickle.load(f)
+                                    logger.info("Successfully loaded BERT tokenizer from pickle file")
+                                except Exception as e:
+                                    logger.error(f"Error loading BERT tokenizer from pickle: {str(e)}")
+                                    # Fallback to AutoTokenizer if pickle loading fails
+                                    self.bert_tokenizer = AutoTokenizer.from_pretrained(file_path)
+                                    logger.info("Loaded BERT tokenizer using AutoTokenizer as fallback")
+                            else:
+                                # Fallback to AutoTokenizer if pickle file doesn't exist
+                                self.bert_tokenizer = AutoTokenizer.from_pretrained(file_path)
+                                logger.info("Loaded BERT tokenizer using AutoTokenizer")
+                            
+                            if self.bert_model and self.bert_tokenizer:
+                                logger.info(f"Successfully loaded BERT model: {model_info['name']}")
+                                model_info["model"] = self.bert_model
+                                model_info["tokenizer"] = self.bert_tokenizer
+                                self.models[model_id] = model_info
+                        except Exception as e:
+                            logger.error(f"BERT model failed to load: {str(e)}")
+                            
                     # Special handling for the CNN model
-                    if model_info["type"] == "deep_learning":
+                    elif model_info["type"] == "deep_learning":
                         if self.tokenizer is None:
                             logger.warning(f"Tokenizer not found for CNN model. Using fallback model.")
                             continue
@@ -243,7 +300,42 @@ class ModelManager:
         model = model_info["model"]
         
         try:
-            if model_info["type"] == "deep_learning":
+            # Special handling for transformer models (BERT)
+            if model_info["type"] == "transformer":
+                if not transformers_available:
+                    return {"error": "Transformers library not available for BERT model"}
+                
+                # Get the tokenizer from the model info
+                tokenizer = model_info.get("tokenizer")
+                if tokenizer is None:
+                    return {"error": "BERT tokenizer not found"}
+                
+                # Tokenize input text
+                inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=512, padding="max_length")
+                
+                # Run inference
+                with torch.no_grad():
+                    outputs = model(**inputs)
+                    logits = outputs.logits
+                    probabilities = torch.nn.functional.softmax(logits, dim=-1)
+                
+                # Get prediction
+                prediction = torch.argmax(probabilities, dim=-1).item()
+                confidence = probabilities[0][prediction].item()
+                
+                # Convert prediction: 0 is fake news, 1 is real news
+                # Note: The actual mapping depends on how the model was trained
+                # If the labels are reversed, switch the condition below
+                result = {
+                    "prediction": prediction,
+                    "prediction_label": "Real News" if prediction == 1 else "Fake News",
+                    "confidence": float(confidence),
+                    "model_id": model_info["id"],
+                    "model_name": model_info["name"],
+                    "raw_score": float(probabilities[0][1].item())  # Probability of being real
+                }
+                
+            elif model_info["type"] == "deep_learning":
                 # Check if tokenizer is available
                 if self.tokenizer is None:
                     return {"error": "Tokenizer not available for CNN model"}
